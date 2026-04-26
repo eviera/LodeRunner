@@ -1,0 +1,84 @@
+# Lode Runner - Constantes del juego
+
+import os
+
+from evgamelib.constants import (
+    STATE_PLAYING, STATE_GAME_OVER, STATE_LEVEL_COMPLETE, STATE_DYING,
+    DEFAULT_FPS, DEFAULT_DEAD_ZONE,
+)
+
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Ventana y renderizado
+TILE_SIZE = 32
+FPS = 60
+RENDER_SCALE = 0.75
+
+VIEWPORT_COLS = 32
+VIEWPORT_ROWS = 16
+
+GAME_WIDTH = VIEWPORT_COLS * TILE_SIZE             # 1024
+GAME_VIEWPORT_HEIGHT = VIEWPORT_ROWS * TILE_SIZE   # 512
+HUD_HEIGHT = 80
+SCREEN_WIDTH = int(GAME_WIDTH * RENDER_SCALE)             # 768
+VIEWPORT_PIXEL_HEIGHT = int(GAME_VIEWPORT_HEIGHT * RENDER_SCALE)  # 384
+SCREEN_HEIGHT = VIEWPORT_PIXEL_HEIGHT + HUD_HEIGHT         # 464
+
+# Física
+GRAVITY = 320
+MAX_FALL_SPEED = 400
+PLAYER_SPEED = 120
+ENEMY_SPEED = 72
+LADDER_SPEED = 80
+HANDRAIL_SPEED = 100
+
+# Juego
+INITIAL_LIVES = 3
+DYING_FLASH_TIME = 1.8
+LEVEL_COMPLETE_DELAY = 2.0
+HOLE_FILL_TIME = 8.0
+DIG_COOLDOWN = 0.4
+
+# Score
+SCORE_GOLD = 250
+SCORE_ENEMY_KILL = 75
+SCORE_LEVEL_COMPLETE = 1000
+
+# Tiles (caracteres en screens.json)
+TILE_AIR      = ' '
+TILE_SOLID    = '#'
+TILE_BRICK    = 'B'
+TILE_LADDER   = 'H'
+TILE_GOLD     = 'G'
+TILE_PLAYER   = 'P'
+TILE_ENEMY    = 'E'
+TILE_HANDRAIL = '-'
+
+SOLID_TILES = {'#', 'B'}
+
+# Colores (paleta C64 de la imagen de referencia)
+COLOR_BG       = (0, 0, 0)
+COLOR_BRICK    = (142, 58, 34)
+COLOR_SOLID    = (110, 40, 20)
+COLOR_LADDER   = (220, 220, 220)
+COLOR_PLAYER   = (255, 255, 255)
+COLOR_ENEMY    = (91, 163, 160)
+COLOR_GOLD     = (255, 200, 50)
+COLOR_HANDRAIL = (255, 255, 255)
+COLOR_HOLE     = (60, 20, 0)
+
+# HUD: dos barras gruesas color ladrillo + texto naranja entre ellas
+HUD_BAR_HEIGHT = 8
+HUD_BAR_COLOR  = (142, 58, 34)
+HUD_TEXT_COLOR = (210, 120, 50)
+HUD_BG_COLOR   = (0, 0, 0)
+
+# Joystick
+DEAD_ZONE = DEFAULT_DEAD_ZONE
+
+# Archivos
+SCREENS_FILE = "screens.json"
+SCORES_FILE  = "scores.json"
+FONT_FILE    = "fonts/PressStart2P-vaV7.ttf"
+FONT_SIZE_HUD = 12
+FONT_SIZE_MSG = 16

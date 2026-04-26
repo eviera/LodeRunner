@@ -1,0 +1,38 @@
+/- Prompt inicial
+- Poder arrancar en cualquier nivel con --level=N
+
+
+
+
+
+
+---------------------------
+Prompts:
+
+
+Quiero crear un juego clon del Lode Runner de Commodore 64 https://en.wikipedia.org/wiki/Lode_Runner. Lee el articulo de Wikipedia para entender de que va el juego
+Vamos a usar python con venv
+Vamos a usar el motor grafico que yo cree en ~/workspace/evgamelib (que esta tambien en https://github.com/eviera/evgamelib)
+Ya tenemos un juego creado con este motor y podemos usarlo de referencia. Este juego esta en ~/workspace/HERO
+Vamos a comenzar por algo sencillo que va a ser:
+- Crear el personaje, que lo vamos a llamar Lode, que va a tener 1 tile de alto (sprites/player.png)
+- Crear los personajes malos que nos quieren atacar, tambien de 1 tile (sprites/enemy.png)
+- Crear los tiles de ladrillos rompibles (tiles/brick.png), ladrillos irrompibles (tiles/solid_brick.png),
+escaleras (tiles/ladder.png), oro para que el Lode lo junte (tiles/gold.png)
+- Por ahora aparecemos directamente en la pantalla de juego, sin intro (ya la vamos a crear)
+- Adjunto imagen de referencia
+- Fijate que en la imagen de referencia, en la zona inferior esta una barra larga roja para separar el
+area de juego del area de score, donde tenemos: score, men (las vidas), y level
+- Se usa un font de los 80s
+- El Lode se puede mover a izquierda y derecha sobre el piso, y hacia arriba y abajo por las escaleras
+- Los enemigos tienen el mismo movimiento
+- Los enemigos se mueven un poco mas lento que el Lode
+- Cada pantalla es un viewport unico (no se pasa de un viewport al otro como se hace en el HERO)
+- Vamos a usar la misma resolucion, tamaño y fullscreen que el HERO
+- Vamos a tener un editor.py como en el HERO pero todavia no lo vamos a implementar
+- Como en el HERO, las pantallas van a salir de un JSON llamado screens.json
+- Los sonidos (que luego vamos a definir), van a vivir en la carpeta sounds como en el HERO
+- Prefiero tener archivos python separados para cada cosa, como player.py, enemy.py, etc.
+- Arma un constans.py con todas las constantes que vamos a usar
+
+Crea un plan para implementar esto. Escribe un CLAUDE.md para tener de referencia con lo que vamos haciendo

@@ -1,0 +1,437 @@
+# Lode Runner - Clase principal del juego
+
+import pygame
+import json
+import os
+
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+os.chdir(_BASE_DIR)
+
+from constants import *
+from player import Player
+from enemy import Enemy
+from evgamelib.rendering import RenderPipeline
+from evgamelib.input_manager import InputManager
+from evgamelib.sound_manager import SoundManager
+from evgamelib.text import draw_text_with_outline
+
+
+class Game:
+    def __init__(self):
+        self.pipeline = None
+        self.input = InputManager(DEAD_ZONE)
+        self.sound = SoundManager()
+        self.font_hud = None
+        self.font_msg = None
+
+        self.state = STATE_PLAYING
+        self.score = 0
+        self.lives = INITIAL_LIVES
+        self.current_level = 0
+
+        self.levels = []
+        self.level_map = []   # List[List[str]] mutable
+
+        self.player = Player()
+        self.enemies = []
+        self.holes = []       # [{"row": r, "col": c, "timer": t}]
+        self.gold_count = 0
+
+        self.tile_images = {}
+        self._enemy_img = None
+        self._enemy_img_flip = None
+
+        self.dying_timer = 0.0
+        self.level_complete_timer = 0.0
+        self.dying_flash = False   # toggling for flash effect
+
+    # ------------------------------------------------------------------
+    # Init
+    # ------------------------------------------------------------------
+
+    def init(self):
+        pygame.init()
+        pygame.mixer.init()
+        self.input.init_controllers()
+
+        self.pipeline = RenderPipeline(
+            GAME_WIDTH, GAME_VIEWPORT_HEIGHT,
+            RENDER_SCALE, HUD_HEIGHT,
+            SCREEN_WIDTH, SCREEN_HEIGHT,
+        )
+        self.pipeline.init_display(fullscreen=True)
+        pygame.display.set_caption("Lode Runner")
+
+        font_path = os.path.join(_BASE_DIR, FONT_FILE)
+        if os.path.exists(font_path):
+            self.font_hud = pygame.font.Font(font_path, FONT_SIZE_HUD)
+            self.font_msg = pygame.font.Font(font_path, FONT_SIZE_MSG)
+        else:
+            self.font_hud = pygame.font.SysFont(None, FONT_SIZE_HUD * 2)
+            self.font_msg = pygame.font.SysFont(None, FONT_SIZE_MSG * 2)
+
+        self._load_assets()
+        self._load_levels()
+        self._start_level(0)
+
+    def _load_image(self, path):
+        """Carga una imagen PNG. Retorna None si no existe."""
+        full = os.path.join(_BASE_DIR, path)
+        if os.path.exists(full):
+            try:
+                return pygame.image.load(full).convert_alpha()
+            except Exception:
+                pass
+        return None
+
+    def _load_assets(self):
+        # Tiles sólidos (fallback: superficie coloreada)
+        for key, path, color in [
+            (TILE_SOLID,    'tiles/solid_brick.png', COLOR_SOLID),
+            (TILE_BRICK,    'tiles/brick.png',       COLOR_BRICK),
+        ]:
+            img = self._load_image(path)
+            if img is None:
+                img = pygame.Surface((TILE_SIZE, TILE_SIZE))
+                img.fill(color)
+            self.tile_images[key] = img
+
+        # Tiles con alpha (ladder, gold, handrail) — sin fallback en tile_images,
+        # se dibujan con métodos _draw_*_fallback si no hay PNG
+        for key, path in [
+            (TILE_LADDER,   'tiles/ladder.png'),
+            (TILE_GOLD,     'tiles/gold.png'),
+            (TILE_HANDRAIL, 'tiles/handrail.png'),
+        ]:
+            img = self._load_image(path)
+            if img is not None:
+                self.tile_images[key] = img
+
+        # Sprites
+        player_img = self._load_image('sprites/player.png')
+        if player_img:
+            self.player.image = player_img
+            self.player.image_flip = pygame.transform.flip(player_img, True, False)
+
+        enemy_img = self._load_image('sprites/enemy.png')
+        if enemy_img:
+            self._enemy_img = enemy_img
+            self._enemy_img_flip = pygame.transform.flip(enemy_img, True, False)
+
+    def _load_levels(self):
+        path = os.path.join(_BASE_DIR, SCREENS_FILE)
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as f:
+                screens = json.load(f)
+            for s in screens:
+                raw = s.get("map", [])
+                normalized = self._normalize_map(raw)
+                self.levels.append(normalized)
+        if not self.levels:
+            self.levels.append(self._default_level())
+
+    def _normalize_map(self, raw):
+        result = []
+        for row in raw[:VIEWPORT_ROWS]:
+            row = str(row)
+            if len(row) < VIEWPORT_COLS:
+                row = row + ' ' * (VIEWPORT_COLS - len(row))
+            result.append(row[:VIEWPORT_COLS])
+        while len(result) < VIEWPORT_ROWS:
+            result.append('#' * VIEWPORT_COLS)
+        return result
+
+    def _default_level(self):
+        return [
+            "################",
+            "#P G  H  H  G E#",
+            "#BBBB H  H BBBB#",
+            "#H    H  H    H#",
+            "#H G--H  H--G H#",
+            "#HBBBBHBBHBBBHB#",
+            "#H    H  H    H#",
+            "################",
+        ]
+
+    def _start_level(self, level_index):
+        if level_index >= len(self.levels):
+            level_index = 0
+        self.current_level = level_index
+
+        # Copiar el mapa como lista mutable de listas de chars
+        self.level_map = [list(row) for row in self.levels[level_index]]
+
+        self.enemies = []
+        self.holes = []
+        self.gold_count = 0
+
+        for row_i, row in enumerate(self.level_map):
+            for col_i, tile in enumerate(row):
+                if tile == TILE_PLAYER:
+                    self.player.x = float(col_i * TILE_SIZE)
+                    self.player.y = float(row_i * TILE_SIZE)
+                    self.player.vel_x = 0.0
+                    self.player.vel_y = 0.0
+                    self.level_map[row_i][col_i] = TILE_AIR
+                elif tile == TILE_ENEMY:
+                    e = Enemy(col_i * TILE_SIZE, row_i * TILE_SIZE)
+                    e.image = self._enemy_img
+                    e.image_flip = self._enemy_img_flip
+                    self.enemies.append(e)
+                    self.level_map[row_i][col_i] = TILE_AIR
+                elif tile == TILE_GOLD:
+                    self.gold_count += 1
+
+        self.state = STATE_PLAYING
+        self.dying_timer = 0.0
+        self.level_complete_timer = 0.0
+        self.dying_flash = False
+
+    # ------------------------------------------------------------------
+    # Main loop
+    # ------------------------------------------------------------------
+
+    def run(self):
+        clock = pygame.time.Clock()
+        running = True
+
+        while running:
+            dt = min(clock.tick(FPS) / 1000.0, 0.05)
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        running = False
+                    elif event.key == pygame.K_F11:
+                        self.pipeline.toggle_fullscreen()
+                    elif event.key in (pygame.K_RETURN, pygame.K_r):
+                        if self.state == STATE_GAME_OVER:
+                            self.score = 0
+                            self.lives = INITIAL_LIVES
+                            self._start_level(0)
+
+            self.input.poll()
+            self._update(dt)
+            self._render()
+
+        pygame.quit()
+
+    # ------------------------------------------------------------------
+    # Update
+    # ------------------------------------------------------------------
+
+    def _update(self, dt):
+        if self.state == STATE_PLAYING:
+            self._update_playing(dt)
+        elif self.state == STATE_DYING:
+            self._update_dying(dt)
+        elif self.state == STATE_LEVEL_COMPLETE:
+            self._update_level_complete(dt)
+
+    def _update_playing(self, dt):
+        keys = self.input.keys
+        joy_x = self.input.joy_axis_x
+        joy_y = self.input.joy_axis_y
+
+        self.player.update(dt, keys, joy_x, joy_y, self.level_map)
+
+        # Digging: Z=izquierda, X=derecha
+        if keys[pygame.K_z]:
+            ok, row, col = self.player.try_dig(-1, self.level_map)
+            if ok:
+                self.level_map[row][col] = TILE_AIR
+                self.holes.append({"row": row, "col": col, "timer": HOLE_FILL_TIME})
+        if keys[pygame.K_x]:
+            ok, row, col = self.player.try_dig(1, self.level_map)
+            if ok:
+                self.level_map[row][col] = TILE_AIR
+                self.holes.append({"row": row, "col": col, "timer": HOLE_FILL_TIME})
+
+        for enemy in self.enemies:
+            enemy.update(dt, self.level_map, self.player.x, self.player.y, self.holes)
+
+        self._update_holes(dt)
+        self._collect_gold()
+        self._check_enemy_collision()
+
+        if self.gold_count <= 0 and self.state == STATE_PLAYING:
+            self.state = STATE_LEVEL_COMPLETE
+            self.level_complete_timer = LEVEL_COMPLETE_DELAY
+            self.score += SCORE_LEVEL_COMPLETE
+
+    def _collect_gold(self):
+        player_rect = self.player.get_rect()
+        level_h = len(self.level_map)
+        px_center_col = int((self.player.x + self.player.width // 2) / TILE_SIZE)
+        py_center_row = int((self.player.y + self.player.height // 2) / TILE_SIZE)
+
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                r = py_center_row + dr
+                c = px_center_col + dc
+                if 0 <= r < level_h and 0 <= c < len(self.level_map[r]):
+                    if self.level_map[r][c] == TILE_GOLD:
+                        tile_rect = pygame.Rect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                        if player_rect.colliderect(tile_rect):
+                            self.level_map[r][c] = TILE_AIR
+                            self.gold_count -= 1
+                            self.score += SCORE_GOLD
+
+    def _check_enemy_collision(self):
+        if self.state != STATE_PLAYING:
+            return
+        player_rect = self.player.get_rect()
+        for enemy in self.enemies:
+            if not enemy.in_hole and enemy.get_rect().colliderect(player_rect):
+                self.state = STATE_DYING
+                self.dying_timer = DYING_FLASH_TIME
+                return
+
+    def _update_holes(self, dt):
+        to_remove = []
+        level_h = len(self.level_map)
+        for hole in self.holes:
+            hole["timer"] -= dt
+            if hole["timer"] <= 0:
+                r, c = hole["row"], hole["col"]
+                if 0 <= r < level_h and 0 <= c < len(self.level_map[r]):
+                    self.level_map[r][c] = TILE_BRICK
+
+                    hole_rect = pygame.Rect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+
+                    # Kill enemy inside hole
+                    for enemy in self.enemies:
+                        if enemy.active and enemy.get_rect().colliderect(hole_rect):
+                            enemy.active = False
+                            self.score += SCORE_ENEMY_KILL
+
+                    # Kill player if inside hole
+                    if self.player.get_rect().colliderect(hole_rect):
+                        self.state = STATE_DYING
+                        self.dying_timer = DYING_FLASH_TIME
+
+                to_remove.append(hole)
+
+        for hole in to_remove:
+            self.holes.remove(hole)
+
+        self.enemies = [e for e in self.enemies if e.active]
+
+    def _update_dying(self, dt):
+        self.dying_timer -= dt
+        self.dying_flash = int(self.dying_timer * 8) % 2 == 0
+        if self.dying_timer <= 0:
+            self.lives -= 1
+            if self.lives <= 0:
+                self.state = STATE_GAME_OVER
+            else:
+                self._start_level(self.current_level)
+
+    def _update_level_complete(self, dt):
+        self.level_complete_timer -= dt
+        if self.level_complete_timer <= 0:
+            self._start_level(self.current_level + 1)
+
+    # ------------------------------------------------------------------
+    # Render
+    # ------------------------------------------------------------------
+
+    def _render(self):
+        gs = self.pipeline.game_surface
+        gs.fill(COLOR_BG)
+        self._render_level(gs)
+        self._render_entities(gs)
+        self.pipeline.scale_game_to_screen()
+        self._render_hud()
+        self._render_overlays()
+        self.pipeline.present()
+
+    def _render_level(self, surf):
+        for row_i, row in enumerate(self.level_map):
+            for col_i, tile in enumerate(row):
+                if tile == TILE_AIR:
+                    continue
+                x = col_i * TILE_SIZE
+                y = row_i * TILE_SIZE
+
+                if tile in self.tile_images:
+                    img = self.tile_images[tile]
+                    surf.blit(img, (x, y))
+                    # Si la imagen no tiene transparencia (placeholder sólido), no sobrescribir
+                elif tile == TILE_LADDER:
+                    self._draw_ladder_fallback(surf, x, y)
+                elif tile == TILE_HANDRAIL:
+                    self._draw_handrail_fallback(surf, x, y)
+                elif tile == TILE_GOLD:
+                    self._draw_gold_fallback(surf, x, y)
+
+        # Hoyos activos (oscuros)
+        for hole in self.holes:
+            x = hole["col"] * TILE_SIZE
+            y = hole["row"] * TILE_SIZE
+            pygame.draw.rect(surf, COLOR_HOLE, (x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4))
+
+    def _draw_ladder_fallback(self, surf, x, y):
+        c = COLOR_LADDER
+        pygame.draw.line(surf, c, (x + 8, y), (x + 8, y + TILE_SIZE - 1), 2)
+        pygame.draw.line(surf, c, (x + 22, y), (x + 22, y + TILE_SIZE - 1), 2)
+        for ry in range(y + 4, y + TILE_SIZE, 8):
+            pygame.draw.line(surf, c, (x + 8, ry), (x + 22, ry), 2)
+
+    def _draw_handrail_fallback(self, surf, x, y):
+        mid_y = y + TILE_SIZE // 2
+        pygame.draw.line(surf, COLOR_HANDRAIL, (x, mid_y), (x + TILE_SIZE, mid_y), 3)
+
+    def _draw_gold_fallback(self, surf, x, y):
+        cx, cy = x + TILE_SIZE // 2, y + TILE_SIZE // 2
+        pygame.draw.circle(surf, COLOR_GOLD, (cx, cy), 7)
+        pygame.draw.circle(surf, (200, 150, 0), (cx, cy), 5)
+
+    def _render_entities(self, surf):
+        if self.state == STATE_DYING and not self.dying_flash:
+            pass  # Parpadeo: no dibujar player
+        else:
+            self.player.draw(surf)
+
+        for enemy in self.enemies:
+            enemy.draw(surf)
+
+    def _render_hud(self):
+        screen = self.pipeline.screen
+        vp_h = self.pipeline.viewport_h
+        hw = self.pipeline.screen_w
+
+        # Fondo negro del área HUD
+        screen.fill(HUD_BG_COLOR, (0, vp_h, hw, HUD_HEIGHT))
+
+        # Barra superior (ladrillo)
+        screen.fill(HUD_BAR_COLOR, (0, vp_h, hw, HUD_BAR_HEIGHT))
+
+        # Barra inferior (ladrillo)
+        screen.fill(HUD_BAR_COLOR, (0, vp_h + HUD_HEIGHT - HUD_BAR_HEIGHT, hw, HUD_BAR_HEIGHT))
+
+        # Texto centrado
+        center_y = vp_h + HUD_HEIGHT // 2
+        score_str = f"SCORE {self.score:06d}   MEN {self.lives:02d}   LEVEL {self.current_level + 1:02d}"
+        text_surf = self.font_hud.render(score_str, True, HUD_TEXT_COLOR)
+        text_rect = text_surf.get_rect(center=(hw // 2, center_y))
+        screen.blit(text_surf, text_rect)
+
+    def _render_overlays(self):
+        screen = self.pipeline.screen
+        vp_h = self.pipeline.viewport_h
+        hw = self.pipeline.screen_w
+        cx = hw // 2
+        cy = vp_h // 2
+
+        if self.state == STATE_LEVEL_COMPLETE:
+            surf = self.font_msg.render("LEVEL COMPLETE!", True, (255, 220, 50))
+            screen.blit(surf, surf.get_rect(center=(cx, cy)))
+
+        elif self.state == STATE_GAME_OVER:
+            surf = self.font_msg.render("GAME OVER", True, (220, 50, 50))
+            screen.blit(surf, surf.get_rect(center=(cx, cy - 20)))
+            surf2 = self.font_hud.render("PRESS ENTER TO RETRY", True, COLOR_LADDER)
+            screen.blit(surf2, surf2.get_rect(center=(cx, cy + 20)))

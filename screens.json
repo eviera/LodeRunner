@@ -1,0 +1,65 @@
+[
+  {
+    "name": "Level 1",
+    "map": [
+      "################################",
+      "# G     H            H     G   #",
+      "# G     H      G     H     G   #",
+      "#BBBBBBBHBBBBBBBBBBBBHBBBBBBBBB#",
+      "#       H            H         #",
+      "#  -----H-----G------H-----    #",
+      "#BBBBBBBHBBBBBBBBBBBBHBBBBBBBBB#",
+      "#       H            H         #",
+      "#   G   H     G   G  H    G    #",
+      "#BBBBBBBHBBBBBBBBBBBBHBBBBBBBBB#",
+      "#       H            H         #",
+      "#  -----H--G-----G---H-----    #",
+      "#BBBBBBBHBBBBBBBBBBBBHBBBBBBBBB#",
+      "#       H            H         #",
+      "#P  E   H     E      H    E    #",
+      "################################"
+    ]
+  },
+  {
+    "name": "Level 2",
+    "map": [
+      "################################",
+      "# G  G  H    G    G  H    G  G #",
+      "#       H            H         #",
+      "#BBBBBBBHBBBBBBBBBBBBHBBBBBBBBB#",
+      "#       H            H         #",
+      "#  G   -H--G--- --G--H G       #",
+      "#BBBBBBBHBBBBBBBBBBBBHBBBBBBBBB#",
+      "#       H            H         #",
+      "# ------HG------G----H-------- #",
+      "#BBBBBBBHBBBBBBBBBBBBHBBBBBBBBB#",
+      "#       H            H         #",
+      "#   G   H   G      G H     G   #",
+      "#BBBBBBBHBBBBBBBBBBBBHBBBBBBBBB#",
+      "#       H            H         #",
+      "#P   E  H      E     H  E      #",
+      "################################"
+    ]
+  },
+  {
+    "name": "Level 3",
+    "map": [
+      "################################",
+      "#  G  HH      G         HH  G  #",
+      "#     HH                HH     #",
+      "#BBBBBHHBBBBBBBBBBBBBBBBHHBBBBB#",
+      "# G---HH---G-----G------HH---G #",
+      "#     HH                HH     #",
+      "#BBBBBHHBBBBBBBBBBBBBBBBHHBBBBB#",
+      "#  G  HH      G         HH  G  #",
+      "#     HH                HH     #",
+      "#BBBBBHHBBBBBBBBBBBBBBBBHHBBBBB#",
+      "# G---HH----G-----G-----HH---G #",
+      "#     HH                HH     #",
+      "#BBBBBHHBBBBBBBBBBBBBBBBHHBBBBB#",
+      "#  G  HH  G          G  HH  G  #",
+      "#P  E HH       E    E   HH  E  #",
+      "################################"
+    ]
+  }
+]
