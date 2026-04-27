@@ -26,9 +26,9 @@ python main.py
 | `enemy.py` | `Enemy(PhysicsEntity)`: AI simple, escaleras, hoyos |
 | `constants.py` | Todas las constantes del juego |
 | `editor.py` | Editor de niveles (pendiente) |
-| `make_assets.py` | Genera sprites/tiles placeholder |
+| `make_assets.py` | Genera sprites/tiles placeholder y frames de animación |
 | `screens.json` | Datos de niveles |
-| `sprites/` | player.png, enemy.png |
+| `sprites/` | lode_idle.png, lode_run_1.png, lode_run_2.png, lode_run_3.png, lode_fall.png; player.png y enemy.png quedan como compatibilidad |
 | `tiles/` | brick.png, solid_brick.png, ladder.png, gold.png, handrail.png |
 | `sounds/` | Efectos de sonido (pendiente) |
 | `fonts/` | PressStart2P-vaV7.ttf |
@@ -99,9 +99,10 @@ python main.py
 
 ## Resolución
 
-- Game surface: 512 × 256 px (16 × 8 tiles de 32px)
-- Screen con HUD: 768 × 464 px (escala 1.5×)
-- HUD: 80px de alto (dos barras ladrillo + texto naranja)
+- Game surface: 1024 × 576 px (32 × 18 tiles de 32px)
+- Viewport escalado: 768 × 432 px (escala 0.75×)
+- Screen con HUD: 768 × 464 px
+- HUD: 32px de alto (dos barras ladrillo + texto naranja)
 - Fullscreen: letterboxed aspect ratio
 
 ## TODO

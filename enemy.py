@@ -13,8 +13,11 @@ class Enemy(PhysicsEntity):
         self.on_ladder = False
         self.on_handrail = False
         self.in_hole = False
+        self.facing_right = True
         self.image = None
         self.image_flip = None
+        self.fall_image = None
+        self.fall_image_flip = None
         # Walk animation
         self.walk_distance = 0.0
         self.walk_frame = 0
@@ -168,13 +171,16 @@ class Enemy(PhysicsEntity):
             self.walk_distance += abs(self.vel_x) * dt
             if self.walk_distance >= 16:
                 self.walk_distance = 0.0
-                self.walk_frame = 1 - self.walk_frame
+                self.walk_frame = (self.walk_frame + 1) % max(1, len(self.walk_frames))
             self.facing_right = self.vel_x > 0
         elif self.on_ladder or self.on_handrail:
             self.walk_distance += abs(self.vel_y) * dt
             if self.walk_distance >= 16:
                 self.walk_distance = 0.0
-                self.walk_frame = 1 - self.walk_frame
+                self.walk_frame = (self.walk_frame + 1) % max(1, len(self.walk_frames))
+        else:
+            self.walk_distance = 0.0
+            self.walk_frame = 0
 
     def _check_collision(self, x, y, level_map):
         level_h = len(level_map)
@@ -195,17 +201,23 @@ class Enemy(PhysicsEntity):
                 return True
         return False
 
+    def get_current_image(self):
+        """Retorna el sprite visible en el frame actual."""
+        is_falling = not self.on_ground and not self.on_ladder and not self.on_handrail and self.vel_y > 20
+        if is_falling and self.fall_image:
+            return self.fall_image_flip if self.facing_right else self.fall_image
+        if self.walk_frames:
+            frames = self.walk_frames_flip if self.facing_right else self.walk_frames
+            return frames[self.walk_frame % len(frames)]
+        if self.image:
+            return self.image_flip if self.facing_right else self.image
+        return None
+
     def draw(self, surface, cam_x=0, cam_y=0):
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
 
-        img = None
-        if self.walk_frames:
-            frames = self.walk_frames_flip if self.vel_x > 0 else self.walk_frames
-            img = frames[self.walk_frame % len(frames)]
-        elif self.image:
-            img = self.image_flip if self.vel_x > 0 else self.image
-
+        img = self.get_current_image()
         if img:
             surface.blit(img, (sx, sy))
         else:

@@ -40,6 +40,10 @@ class Game:
         self.tile_images = {}
         self._enemy_img = None
         self._enemy_img_flip = None
+        self._enemy_fall_img = None
+        self._enemy_fall_img_flip = None
+        self._enemy_walk_frames = []
+        self._enemy_walk_frames_flip = []
 
         self.dying_timer = 0.0
         self.level_complete_timer = 0.0
@@ -84,6 +88,37 @@ class Game:
                 pass
         return None
 
+    def _load_frames(self, paths):
+        frames = []
+        for path in paths:
+            img = self._load_image(path)
+            if img is not None:
+                frames.append(img)
+        return frames
+
+    def _tint_image(self, img, color):
+        if img is None:
+            return None
+        tinted = img.copy()
+        tinted.fill((*color, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        return tinted
+
+    def _tint_frames(self, frames, color):
+        return [self._tint_image(img, color) for img in frames]
+
+    def _mask_overlap(self, image_a, pos_a, image_b, pos_b):
+        if image_a is None or image_b is None:
+            return False
+        rect_a = image_a.get_rect(topleft=pos_a)
+        rect_b = image_b.get_rect(topleft=pos_b)
+        if not rect_a.colliderect(rect_b):
+            return False
+
+        mask_a = pygame.mask.from_surface(image_a)
+        mask_b = pygame.mask.from_surface(image_b)
+        offset = (rect_b.x - rect_a.x, rect_b.y - rect_a.y)
+        return mask_a.overlap(mask_b, offset) is not None
+
     def _load_assets(self):
         # Tiles sólidos (fallback: superficie coloreada)
         for key, path, color in [
@@ -107,16 +142,38 @@ class Game:
             if img is not None:
                 self.tile_images[key] = img
 
-        # Sprites
-        player_img = self._load_image('sprites/player.png')
+        # Sprites de Lode. Los PNG base miran a la izquierda; se espejan en memoria.
+        player_img = self._load_image('sprites/lode_idle.png') or self._load_image('sprites/player.png')
         if player_img:
             self.player.image = player_img
             self.player.image_flip = pygame.transform.flip(player_img, True, False)
 
-        enemy_img = self._load_image('sprites/enemy.png')
-        if enemy_img:
-            self._enemy_img = enemy_img
-            self._enemy_img_flip = pygame.transform.flip(enemy_img, True, False)
+        fall_img = self._load_image('sprites/lode_fall.png')
+        if fall_img:
+            self.player.fall_image = fall_img
+            self.player.fall_image_flip = pygame.transform.flip(fall_img, True, False)
+
+        walk_frames = self._load_frames([
+            'sprites/lode_run_1.png',
+            'sprites/lode_run_2.png',
+            'sprites/lode_run_3.png',
+            'sprites/lode_run_2.png',
+        ])
+        if walk_frames:
+            self.player.walk_frames = walk_frames
+            self.player.walk_frames_flip = [
+                pygame.transform.flip(img, True, False) for img in walk_frames
+            ]
+
+        # Por ahora enemies usan el mismo set visual que Lode, tintado a celeste en runtime.
+        self._enemy_img = self._tint_image(self.player.image, COLOR_ENEMY)
+        self._enemy_img_flip = pygame.transform.flip(self._enemy_img, True, False) if self._enemy_img else None
+        self._enemy_fall_img = self._tint_image(self.player.fall_image, COLOR_ENEMY)
+        self._enemy_fall_img_flip = pygame.transform.flip(self._enemy_fall_img, True, False) if self._enemy_fall_img else None
+        self._enemy_walk_frames = self._tint_frames(self.player.walk_frames, COLOR_ENEMY)
+        self._enemy_walk_frames_flip = [
+            pygame.transform.flip(img, True, False) for img in self._enemy_walk_frames
+        ]
 
     def _load_levels(self):
         path = os.path.join(_BASE_DIR, SCREENS_FILE)
@@ -177,6 +234,10 @@ class Game:
                     e = Enemy(col_i * TILE_SIZE, row_i * TILE_SIZE)
                     e.image = self._enemy_img
                     e.image_flip = self._enemy_img_flip
+                    e.fall_image = self._enemy_fall_img
+                    e.fall_image_flip = self._enemy_fall_img_flip
+                    e.walk_frames = self._enemy_walk_frames
+                    e.walk_frames_flip = self._enemy_walk_frames_flip
                     self.enemies.append(e)
                     self.level_map[row_i][col_i] = TILE_AIR
                 elif tile == TILE_GOLD:
@@ -262,7 +323,12 @@ class Game:
             self.score += SCORE_LEVEL_COMPLETE
 
     def _collect_gold(self):
-        player_rect = self.player.get_rect()
+        player_img = self.player.get_current_image()
+        player_pos = (int(self.player.x), int(self.player.y))
+        gold_img = self.tile_images.get(TILE_GOLD)
+        if player_img is None or gold_img is None:
+            return
+
         level_h = len(self.level_map)
         px_center_col = int((self.player.x + self.player.width // 2) / TILE_SIZE)
         py_center_row = int((self.player.y + self.player.height // 2) / TILE_SIZE)
@@ -273,8 +339,8 @@ class Game:
                 c = px_center_col + dc
                 if 0 <= r < level_h and 0 <= c < len(self.level_map[r]):
                     if self.level_map[r][c] == TILE_GOLD:
-                        tile_rect = pygame.Rect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-                        if player_rect.colliderect(tile_rect):
+                        gold_pos = (c * TILE_SIZE, r * TILE_SIZE)
+                        if self._mask_overlap(player_img, player_pos, gold_img, gold_pos):
                             self.level_map[r][c] = TILE_AIR
                             self.gold_count -= 1
                             self.score += SCORE_GOLD
@@ -282,9 +348,15 @@ class Game:
     def _check_enemy_collision(self):
         if self.state != STATE_PLAYING:
             return
-        player_rect = self.player.get_rect()
+        player_img = self.player.get_current_image()
+        player_pos = (int(self.player.x), int(self.player.y))
+        if player_img is None:
+            return
+
         for enemy in self.enemies:
-            if not enemy.in_hole and enemy.get_rect().colliderect(player_rect):
+            enemy_img = enemy.get_current_image()
+            enemy_pos = (int(enemy.x), int(enemy.y))
+            if not enemy.in_hole and self._mask_overlap(player_img, player_pos, enemy_img, enemy_pos):
                 self.state = STATE_DYING
                 self.dying_timer = DYING_FLASH_TIME
                 return

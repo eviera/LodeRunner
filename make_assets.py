@@ -7,6 +7,7 @@ import os
 import sys
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import pygame
 pygame.init()
@@ -73,19 +74,69 @@ def make_handrail():
 
 # ---------- SPRITES ----------
 
-def make_stick_figure(body_color, bg_alpha=True):
-    s = make_surface(alpha=bg_alpha)
-    c = body_color
-    # Cabeza
-    pygame.draw.circle(s, c, (16, 7), 5)
-    # Cuello + torso
-    pygame.draw.line(s, c, (16, 12), (16, 22), 2)
-    # Brazos
-    pygame.draw.line(s, c, (16, 15), (8, 20), 2)
-    pygame.draw.line(s, c, (16, 15), (24, 20), 2)
-    # Piernas
-    pygame.draw.line(s, c, (16, 22), (10, 31), 2)
-    pygame.draw.line(s, c, (16, 22), (22, 31), 2)
+def px(s, color, rect):
+    pygame.draw.rect(s, color, rect)
+
+
+def limb(s, color, start, end, width=3):
+    pygame.draw.line(s, color, start, end, width)
+
+
+def make_lode_sprite(pose):
+    """Sprite 32x32 estilo C64, mirando a la izquierda.
+
+    El juego espeja horizontalmente este arte para correr hacia la derecha.
+    """
+    s = make_surface(alpha=True)
+    c = (255, 255, 255)
+
+    def head(x, y):
+        px(s, c, (x + 1, y, 4, 2))
+        px(s, c, (x, y + 2, 6, 5))
+        px(s, c, (x + 1, y + 7, 4, 2))
+
+    if pose == "idle":
+        head(14, 4)
+        limb(s, c, (17, 12), (17, 21))      # torso
+        limb(s, c, (16, 14), (11, 18), 2)
+        limb(s, c, (18, 14), (23, 17), 2)
+        limb(s, c, (16, 21), (12, 29), 2)
+        limb(s, c, (18, 21), (23, 29), 2)
+
+    elif pose == "run_1":
+        head(14, 4)
+        limb(s, c, (17, 12), (16, 21))
+        limb(s, c, (16, 14), (9, 17), 2)    # brazo adelante
+        limb(s, c, (18, 14), (23, 12), 2)
+        limb(s, c, (16, 21), (9, 25), 2)    # pierna adelante
+        limb(s, c, (17, 21), (23, 29), 2)   # pierna atras
+
+    elif pose == "run_2":
+        head(15, 3)
+        limb(s, c, (18, 11), (18, 20))
+        limb(s, c, (17, 13), (11, 15), 2)
+        limb(s, c, (19, 13), (24, 16), 2)
+        limb(s, c, (17, 20), (13, 28), 2)
+        limb(s, c, (19, 20), (23, 28), 2)
+
+    elif pose == "run_3":
+        head(14, 4)
+        limb(s, c, (17, 12), (18, 21))
+        limb(s, c, (16, 14), (11, 12), 2)
+        limb(s, c, (18, 14), (25, 17), 2)   # brazo adelante
+        limb(s, c, (17, 21), (12, 29), 2)   # pierna atras
+        limb(s, c, (18, 21), (25, 25), 2)   # pierna adelante
+
+    elif pose == "fall":
+        head(14, 10)
+        limb(s, c, (17, 18), (17, 25))
+        limb(s, c, (15, 18), (10, 12), 3)   # brazos arriba
+        limb(s, c, (19, 18), (24, 12), 3)
+        limb(s, c, (16, 25), (13, 30), 2)
+        limb(s, c, (18, 25), (22, 30), 2)
+    else:
+        raise ValueError(f"Pose desconocida: {pose}")
+
     return s
 
 
@@ -97,8 +148,16 @@ save(make_ladder(),                             "tiles/ladder.png")
 save(make_gold(),                               "tiles/gold.png")
 save(make_handrail(),                           "tiles/handrail.png")
 
-save(make_stick_figure((255, 255, 255)), "sprites/player.png")
-save(make_stick_figure((91, 163, 160)),  "sprites/enemy.png")
+idle = make_lode_sprite("idle")
+save(idle, "sprites/lode_idle.png")
+save(make_lode_sprite("run_1"), "sprites/lode_run_1.png")
+save(make_lode_sprite("run_2"), "sprites/lode_run_2.png")
+save(make_lode_sprite("run_3"), "sprites/lode_run_3.png")
+save(make_lode_sprite("fall"),  "sprites/lode_fall.png")
+
+# Compatibilidad con el loader anterior y con herramientas que esperen estos nombres.
+save(idle, "sprites/player.png")
+save(idle, "sprites/enemy.png")
 
 print("Listo.")
 pygame.quit()

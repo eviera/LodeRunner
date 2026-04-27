@@ -4,7 +4,7 @@
     "map": [
       "################################",
       "# G     H            H     G   #",
-      "# G     H      G     H     G   #",
+      "# G     H   E  G     H     G   #",
       "#BBBBBBBHBBBBBBBBBBBBHBBBBBBBBB#",
       "#       H            H         #",
       "#  -----H-----G------H-----    #",
@@ -16,7 +16,7 @@
       "#  -----H--G-----G---H-----    #",
       "#BBBBBBBHBBBBBBBBBBBBHBBBBBBBBB#",
       "#       H            H         #",
-      "#P  E   H     E      H    E    #",
+      "#P      H            H    E    #",
       "################################"
     ]
   },
