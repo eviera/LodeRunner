@@ -75,8 +75,9 @@ python main.py
 - Player en hoyo cuando se llena → pierde vida
 
 **Enemigos:**
-- Persiguen al player horizontalmente
-- Usan escaleras para cambiar de nivel
+- Persiguen al player con pathfinding sobre la grilla del nivel
+- Usan escaleras, plataformas, barras y caídas para cambiar de nivel
+- Cada enemy tiene variaciones de inteligencia, recálculo y elección de ruta
 - Se quedan atrapados en hoyos (`in_hole=True`)
 - Velocidad: 72px/s (vs player: 120px/s)
 
@@ -115,5 +116,5 @@ python main.py
 - [ ] Editor de niveles (editor.py)
 - [ ] High scores (evgamelib.scores)
 - [ ] Animación de muerte del enemy (flash)
-- [ ] Mejoras de AI: pathfinding más inteligente
+- [x] Mejoras de AI: pathfinding más inteligente
 - [ ] Hand bars: mecánica de colgarse más refinada

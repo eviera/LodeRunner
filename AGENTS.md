@@ -37,7 +37,7 @@ Tambien existen wrappers:
 - `main.py`: entry point; crea `Game`, llama `init()` y `run()`.
 - `game.py`: clase principal `Game`; carga assets/niveles, loop, estados, render, HUD, digging, gold, vidas y colisiones.
 - `player.py`: `Player(PhysicsEntity)`; movimiento, escalera, handrail, gravedad, colisiones y digging.
-- `enemy.py`: `Enemy(PhysicsEntity)`; AI simple, movimiento, escaleras, handrails y hoyos.
+- `enemy.py`: `Enemy(PhysicsEntity)`; pathfinding sobre grilla, movimiento, escaleras, handrails y hoyos.
 - `constants.py`: constantes de resolucion, fisica, tiles, colores, scoring y archivos.
 - `make_assets.py`: genera assets placeholder PNG de 32x32, incluyendo frames pixel de Lode.
 - `screens.json`: niveles.
@@ -108,6 +108,7 @@ Si hace falta entender patrones de editor, fullscreen o pipeline, revisar primer
 
 - Player y enemigos miden 1 tile.
 - Player camina, sube/baja escaleras, se mueve por handrails y cae por gravedad.
+- Enemigos persiguen al player con pathfinding sobre tiles y tienen variaciones por instancia.
 - No hay salto.
 - Digging solo cuando el player esta en el suelo y el tile adyacente a nivel de pies es `B`.
 - Los hoyos duran `HOLE_FILL_TIME` y luego restauran `TILE_BRICK`.
