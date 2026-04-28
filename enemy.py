@@ -27,14 +27,24 @@ class Enemy(PhysicsEntity):
         self.walk_frames = []
         self.walk_frames_flip = []
 
-        rng = random.Random(int(x) * 1009 + int(y) * 9173)
-        self.intelligence = rng.uniform(0.65, 1.0)
-        self.repath_interval = rng.uniform(0.12, 0.36) + (1.0 - self.intelligence) * 0.30
+        self.rng = random.Random(int(x) * 1009 + int(y) * 9173)
+        self.intelligence = self.rng.uniform(0.65, 1.0)
+        self.speed_factor = self.rng.uniform(1.0 - ENEMY_SPEED_VARIATION, 1.0 + ENEMY_SPEED_VARIATION)
+        self.repath_interval = self.rng.uniform(0.12, 0.36) + (1.0 - self.intelligence) * 0.30
         self.repath_timer = 0.0
         self.path = []
         self.path_target = None
-        self.prefer_vertical = rng.random() < self.intelligence
+        self.prefer_vertical = self.rng.random() < self.intelligence
         self.lookahead_steps = 2 if self.intelligence > 0.85 else 1
+        self.stuck_timer = 0.0
+        self.idle_timer = 0.0
+        self.unstuck_timer = 0.0
+        self.unstuck_dir = 1
+        self.hole_escape_timer = 0.0
+        self.current_hole = None
+        self.hole_settled = False
+        self._last_x = self.x
+        self._last_y = self.y
 
     def _detect_states(self, level_map):
         level_h = len(level_map)
@@ -64,38 +74,120 @@ class Enemy(PhysicsEntity):
             if level_map[mid_row][mid_col] == TILE_HANDRAIL:
                 self.on_handrail = True
 
-    def _check_in_hole(self, holes):
-        enemy_row = int(self.y / TILE_SIZE)
+    def _hole_at_position(self, holes):
+        center_row = int((self.y + self.height // 2) / TILE_SIZE)
+        foot_row = int((self.y + self.height + 1) / TILE_SIZE)
         enemy_col = int((self.x + self.width // 2) / TILE_SIZE)
         for hole in holes:
-            if hole["row"] == enemy_row and hole["col"] == enemy_col:
-                return True
-        return False
+            if hole["col"] == enemy_col and hole["row"] in (center_row, foot_row):
+                return hole
+        return None
 
     def update(self, dt, level_map, player_x, player_y, holes):
+        old_x = self.x
+        old_y = self.y
         self._detect_states(level_map)
-        self.in_hole = self._check_in_hole(holes)
+        hole = self._hole_at_position(holes)
+        was_in_hole = self.in_hole
+        self.in_hole = hole is not None
+
+        if self.in_hole and (not was_in_hole or self.current_hole != (hole["row"], hole["col"])):
+            self.hole_escape_timer = ENEMY_HOLE_ESCAPE_TIME
+            self.current_hole = (hole["row"], hole["col"])
+            self.hole_settled = False
 
         if self.in_hole:
-            self._update_in_hole(level_map)
+            self.stuck_timer = 0.0
+            self.idle_timer = 0.0
+            self.unstuck_timer = 0.0
+            self._update_in_hole(dt, level_map, hole)
+        elif self.unstuck_timer > 0:
+            self.current_hole = None
+            self._update_unstuck(dt, player_x, player_y, level_map)
         else:
+            self.current_hole = None
             self._update_ai(dt, player_x, player_y, level_map)
 
+        intended_movement = abs(self.vel_x) > 5 or abs(self.vel_y) > 5
         self._apply_physics(dt, level_map)
+        if self.in_hole:
+            self._settle_in_hole_if_ready(hole)
+        if not self.in_hole:
+            self._update_stuck_state(dt, old_x, old_y, intended_movement)
         self._update_animation(dt)
 
-    def _update_in_hole(self, level_map):
-        """Atrapado en un hoyo: solo puede escalar si hay escalera."""
+    def _update_in_hole(self, dt, level_map, hole):
+        """Atrapado en un hoyo temporal; puede escaparse antes de que cierre."""
+        target_x = float(hole["col"] * TILE_SIZE)
+        target_y = float(hole["row"] * TILE_SIZE)
+
+        if not self.hole_settled:
+            dx = target_x - self.x
+            if abs(dx) <= 2:
+                self.x = target_x
+                self.vel_x = 0.0
+            else:
+                self.vel_x = self._speed() if dx > 0 else -self._speed()
+
+            if self.y >= target_y:
+                self._settle_in_hole(hole)
+            return
+
         self.vel_x = 0.0
-        if self.on_ladder:
-            self.vel_y = -ENEMY_SPEED
-        else:
-            self.vel_y = 0.0
+        self.vel_y = 0.0
+        if self.hole_escape_timer > 0:
+            self.hole_escape_timer -= dt
+            if self.hole_escape_timer > 0:
+                return
+
+        self._escape_hole(level_map, hole)
+
+    def _settle_in_hole_if_ready(self, hole):
+        if not self.hole_settled and self.y >= hole["row"] * TILE_SIZE:
+            self._settle_in_hole(hole)
+
+    def _settle_in_hole(self, hole):
+        self.x = float(hole["col"] * TILE_SIZE)
+        self.y = float(hole["row"] * TILE_SIZE)
+        self.vel_x = 0.0
+        self.vel_y = 0.0
+        self.hole_settled = True
+
+    def _escape_hole(self, level_map, hole):
+        row = hole["row"]
+        col = hole["col"]
+        directions = [-1, 1]
+        if self.rng.random() < 0.5:
+            directions.reverse()
+
+        for direction in directions:
+            exit_col = col + direction
+            exit_row = row - 1
+            if self._has_support(exit_row, exit_col, level_map) and self._is_passable(exit_row, exit_col, level_map):
+                self.x = float(exit_col * TILE_SIZE)
+                self.y = float(exit_row * TILE_SIZE)
+                self.direction = direction
+                self.vel_x = 0.0
+                self.vel_y = 0.0
+                self.in_hole = False
+                self.current_hole = None
+                self.hole_settled = False
+                self.hole_escape_timer = 0.0
+                return
+
+        self.vel_y = -self._speed()
+
+    def _speed(self):
+        return ENEMY_SPEED * self.speed_factor * (0.92 + self.intelligence * 0.12)
 
     def _update_ai(self, dt, player_x, player_y, level_map):
         """Persigue al player con pathfinding simple sobre la grilla del nivel."""
         start = self._entity_tile(self.x, self.y)
         target = self._entity_tile(player_x, player_y)
+
+        if self._try_direct_same_row_chase(start, target, player_x, level_map):
+            self.path = []
+            return
 
         self.repath_timer -= dt
         if self.repath_timer <= 0 or target != self.path_target or not self.path:
@@ -104,10 +196,63 @@ class Enemy(PhysicsEntity):
             self.repath_timer = self.repath_interval
 
         if not self.path:
-            self._fallback_chase(player_x, player_y)
+            self._fallback_chase(player_x, player_y, level_map)
             return
 
         self._follow_path(start, player_x, player_y, level_map)
+
+    def _try_direct_same_row_chase(self, start, target, player_x, level_map):
+        row, col = start
+        target_row, target_col = target
+        if row != target_row:
+            return False
+        if not self._has_support(row, col, level_map):
+            return False
+
+        if target_col == col:
+            speed = self._speed()
+            player_center_x = player_x + TILE_SIZE // 2
+            my_center_x = self.x + self.width // 2
+            dx = player_center_x - my_center_x
+            if abs(dx) > 2:
+                self.direction = 1 if dx > 0 else -1
+                self.vel_x = self.direction * speed
+                self.vel_y = 0.0
+            else:
+                self.vel_x = 0.0
+                self.vel_y = 0.0
+            return True
+
+        step = 1 if target_col > col else -1
+        for check_col in range(col + step, target_col + step, step):
+            if not self._is_passable(row, check_col, level_map):
+                return False
+            if not self._has_support(row, check_col, level_map):
+                return False
+
+        speed = self._speed()
+
+        if self._align_y_for_horizontal_exit(row, col, speed, level_map):
+            return True
+
+        self.direction = step
+        self.vel_x = step * speed
+        self.vel_y = 0.0
+        return True
+
+    def _align_y_for_horizontal_exit(self, row, col, speed, level_map):
+        if not self._has_support(row, col, level_map):
+            return False
+
+        target_y = row * TILE_SIZE
+        dy = target_y - self.y
+        if abs(dy) <= TILE_SIZE * 0.5:
+            self.y = target_y
+            return False
+
+        self.vel_x = 0.0
+        self.vel_y = speed if dy > 0 else -speed
+        return True
 
     def _entity_tile(self, x, y):
         col = int((x + self.width // 2) / TILE_SIZE)
@@ -208,26 +353,57 @@ class Enemy(PhysicsEntity):
         return path
 
     def _follow_path(self, current, player_x, player_y, level_map):
+        if current in self.path:
+            current_index = self.path.index(current)
+            self.path = self.path[current_index:]
+
         while len(self.path) > 1 and self.path[0] == current:
             self.path.pop(0)
 
         if not self.path:
-            self._fallback_chase(player_x, player_y)
+            self._fallback_chase(player_x, player_y, level_map)
             return
 
-        step_index = min(self.lookahead_steps - 1, len(self.path) - 1)
-        next_row, next_col = self.path[step_index]
         current_row, current_col = current
+        on_ladder_tile = self._tile_at(current_row, current_col, level_map) == TILE_LADDER
+        next_is_vertical = len(self.path) > 0 and self.path[0][1] == current_col and self.path[0][0] != current_row
+        step_index = 0 if on_ladder_tile or next_is_vertical else min(self.lookahead_steps - 1, len(self.path) - 1)
+        next_row, next_col = self.path[step_index]
 
         target_x = next_col * TILE_SIZE
         dx = target_x - self.x
+        target_y = current_row * TILE_SIZE
+        dy = target_y - self.y
         align_tolerance = 3.0 + (1.0 - self.intelligence) * 5.0
-        speed = ENEMY_SPEED * (0.92 + self.intelligence * 0.12)
+        speed = self._speed()
 
         self.vel_x = 0.0
         self.vel_y = 0.0
 
+        if on_ladder_tile:
+            ladder_x = current_col * TILE_SIZE
+            ladder_dx = ladder_x - self.x
+            if abs(ladder_dx) > align_tolerance:
+                self.direction = 1 if ladder_dx > 0 else -1
+                self.vel_x = self.direction * speed
+                return
+            self.x = ladder_x
+
+            if next_col != current_col:
+                if abs(dy) > align_tolerance:
+                    self.vel_y = speed if dy > 0 else -speed
+                    return
+                self.y = target_y
+            elif next_row < current_row:
+                self.vel_y = -speed
+                return
+            elif next_row > current_row:
+                self.vel_y = speed
+                return
+
         if next_col != current_col:
+            if self._align_y_for_horizontal_exit(current_row, current_col, speed, level_map):
+                return
             self.direction = 1 if dx > 0 else -1
             self.vel_x = self.direction * speed
             return
@@ -246,18 +422,82 @@ class Enemy(PhysicsEntity):
             elif not self.on_ground:
                 self.vel_y = max(self.vel_y, speed)
 
-    def _fallback_chase(self, player_x, player_y):
+    def _fallback_chase(self, player_x, player_y, level_map=None):
         player_center_x = player_x + TILE_SIZE // 2
         my_center_x = self.x + self.width // 2
         if abs(player_center_x - my_center_x) > 2:
             self.direction = 1 if player_center_x > my_center_x else -1
-            self.vel_x = self.direction * ENEMY_SPEED
+            if level_map is not None:
+                row, col = self._entity_tile(self.x, self.y)
+                if self._align_y_for_horizontal_exit(row, col, self._speed(), level_map):
+                    return
+            self.vel_x = self.direction * self._speed()
         else:
             self.vel_x = 0.0
         self.vel_y = 0.0
 
+    def _update_stuck_state(self, dt, old_x, old_y, intended_movement):
+        moved = abs(self.x - old_x) + abs(self.y - old_y)
+        if intended_movement and moved < 0.2:
+            self.stuck_timer += dt
+        else:
+            self.stuck_timer = max(0.0, self.stuck_timer - dt * 2)
+
+        if not intended_movement and moved < 0.2:
+            self.idle_timer += dt
+        else:
+            self.idle_timer = 0.0
+
+        if self.stuck_timer > ENEMY_STUCK_TIME or self.idle_timer > ENEMY_IDLE_UNSTUCK_TIME:
+            self._start_unstuck()
+
+    def _start_unstuck(self):
+        self.path = []
+        self.repath_timer = 0.0
+        self.stuck_timer = 0.0
+        self.idle_timer = 0.0
+        self.unstuck_timer = ENEMY_UNSTUCK_TIME
+        self.unstuck_dir = -self.direction if self.rng.random() < 0.5 else self.direction
+        if self.unstuck_dir == 0:
+            self.unstuck_dir = 1 if self.rng.random() < 0.5 else -1
+
+    def _update_unstuck(self, dt, player_x, player_y, level_map):
+        self.unstuck_timer = max(0.0, self.unstuck_timer - dt)
+        speed = self._speed()
+        row, col = self._entity_tile(self.x, self.y)
+
+        self.vel_x = 0.0
+        self.vel_y = 0.0
+
+        if self.on_ladder and self.rng.random() < 0.35:
+            player_center_y = player_y + TILE_SIZE // 2
+            my_center_y = self.y + self.height // 2
+            if abs(player_center_y - my_center_y) > 2:
+                self.vel_y = speed if player_center_y > my_center_y else -speed
+                return
+
+        if self._align_y_for_horizontal_exit(row, col, speed, level_map):
+            return
+
+        for direction in (self.unstuck_dir, -self.unstuck_dir):
+            next_x = self.x + direction * speed * max(dt, 1 / FPS)
+            if not self._check_collision(next_x, self.y, level_map):
+                self.direction = direction
+                self.vel_x = direction * speed
+                return
+
+        if self.on_ladder:
+            self.vel_y = -speed if self.rng.random() < 0.5 else speed
+        elif not self.on_ground:
+            self.vel_y = speed
+
+        if self.unstuck_timer <= 0:
+            self.path = []
+            self.repath_timer = 0.0
+
     def _apply_physics(self, dt, level_map):
-        if not self.on_ladder and not self.on_handrail:
+        ladder_holding = self.on_ladder and abs(self.vel_x) < 5
+        if not ladder_holding and not self.on_handrail and (not self.in_hole or not self.hole_settled):
             self.vel_y += GRAVITY * dt
             if self.vel_y > MAX_FALL_SPEED:
                 self.vel_y = MAX_FALL_SPEED

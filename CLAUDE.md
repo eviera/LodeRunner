@@ -69,17 +69,32 @@ python main.py
 
 **Digging:**
 - `Z` / `X` cavan el ladrillo (`B`) a nivel de los pies del player
-- El hoyo dura `HOLE_FILL_TIME` segundos (8s por defecto)
+- No se puede cavar si justo arriba del ladrillo objetivo hay una escalera (`H`)
+- El hoyo dura `HOLE_FILL_TIME_MS` milisegundos (`HOLE_FILL_TIME` en segundos para el loop)
 - Hoyo se llena automáticamente → ladrillo restaurado
-- Enemy en hoyo cuando se llena → muere
+- Enemy que pasa sobre un hoyo cae y queda atrapado, aunque debajo del hoyo haya aire; se detecta por pies/centro sobre el tile del pozo
+- La entrada al pozo se anima con gravedad; `hole_settled` indica cuando ya llegó al tile del pozo y recién ahí corre el timer de escape
+- Enemy atrapado puede escapar antes del cierre despues de `ENEMY_HOLE_ESCAPE_TIME_MS`; sale a un tile lateral valido sobre piso si existe
+- Enemy cayendo dentro de un pozo todavía mata al player si lo toca por máscara pixel-perfect; solo deja de matar cuando `hole_settled=True`
+- Enemy en hoyo cuando se llena → suma score y reaparece aleatoriamente sobre un piso valido
 - Player en hoyo cuando se llena → pierde vida
+- Player atraviesa el hoyo si debajo hay aire; solo muere si sigue dentro cuando el hoyo se cierra
+- Player cae al pozo por overlap horizontal (`PLAYER_HOLE_FALL_OVERLAP`), no solo por centro; al caer se centra en la boca para evitar que las esquinas lo sostengan sobre ladrillos vecinos
 
 **Enemigos:**
 - Persiguen al player con pathfinding sobre la grilla del nivel
 - Usan escaleras, plataformas, barras y caídas para cambiar de nivel
-- Cada enemy tiene variaciones de inteligencia, recálculo y elección de ruta
+- Cada enemy tiene variaciones de inteligencia, velocidad, recálculo y elección de ruta
+- Si enemy y player quedan en la misma columna lógica de la grilla, el enemy sigue acercándose por posición real hasta tocar los píxeles del Lode; no debe frenarse solo por estar en el mismo tile
+- Si un enemy queda quieto fuera de un pozo más de `ENEMY_IDLE_UNSTUCK_TIME`, o intenta moverse pero no avanza más de `ENEMY_STUCK_TIME`, entra por `ENEMY_UNSTUCK_TIME` en un movimiento corto de desatasco
+- Si un enemy sale horizontalmente de una escalera hacia aire sin soporte, cae por gravedad; solo se sostiene en escalera cuando no está saliendo horizontalmente
 - Se quedan atrapados en hoyos (`in_hole=True`)
 - Velocidad: 72px/s (vs player: 120px/s)
+
+**Colisiones:**
+- Player y enemies miden 1 tile, pero los sprites `lode_*` tienen alpha transparente amplio dentro de 32x32
+- La muerte por enemy usa máscaras pixel-perfect de los sprites visibles
+- Si un enemy queda cerca sin matar al player, revisar primero la IA/quietud del enemy en `enemy.py`; no agrandar hitboxes para resolver ese caso
 
 **Condición de victoria:**
 - Recolectar todo el oro (`G`) → level complete
@@ -118,3 +133,9 @@ python main.py
 - [ ] Animación de muerte del enemy (flash)
 - [x] Mejoras de AI: pathfinding más inteligente
 - [ ] Hand bars: mecánica de colgarse más refinada
+
+## Notas para agentes
+
+- `constants.py` es la fuente de verdad para resolución, física, timers de pozos y timers de desatasco de enemigos.
+- Si se verifica sintaxis en sandbox, usar `PYTHONPYCACHEPREFIX=/tmp/loderunner-pycache venv/bin/python -m py_compile ...` para no escribir `.pyc` en `~/Library/Caches`.
+- Antes de tocar física/colisiones, revisar `player.py`, `enemy.py` y `game.py`; la detección de estados y la resolución de colisiones están repartidas entre esos archivos.

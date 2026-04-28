@@ -107,13 +107,24 @@ Si hace falta entender patrones de editor, fullscreen o pipeline, revisar primer
 ## Mecanicas implementadas
 
 - Player y enemigos miden 1 tile.
+- El contacto player-enemy debe ser pixel-perfect con máscaras de los sprites visibles; si no muere, el problema esperado suele estar en la IA/enemigo quieto, no en agrandar la colisión.
 - Player camina, sube/baja escaleras, se mueve por handrails y cae por gravedad.
-- Enemigos persiguen al player con pathfinding sobre tiles y tienen variaciones por instancia.
+- Enemigos persiguen al player con pathfinding sobre tiles y tienen variaciones de inteligencia/velocidad por instancia.
+- Cuando enemy y player caen en la misma columna lógica de grilla, el enemy debe seguir acercándose por posición real hasta tocar los píxeles del Lode; no debe frenar solo porque ambos centros estén en el mismo tile.
+- Si un enemy queda quieto fuera de un pozo más de `ENEMY_IDLE_UNSTUCK_TIME`, o intenta moverse pero no avanza más de `ENEMY_STUCK_TIME`, entra en un modo corto de desatasco (`ENEMY_UNSTUCK_TIME`) con movimiento alternativo/aleatorio.
 - No hay salto.
-- Digging solo cuando el player esta en el suelo y el tile adyacente a nivel de pies es `B`.
-- Los hoyos duran `HOLE_FILL_TIME` y luego restauran `TILE_BRICK`.
-- Un enemigo dentro de un hoyo que se cierra queda inactivo y suma score.
+- Digging con `Z`/`X` cava izquierda/derecha solo cuando el player esta en el suelo y el tile adyacente a nivel de pies es `B`.
+- No se puede cavar un ladrillo si justo arriba de ese ladrillo hay una escalera (`H`).
+- Los hoyos duran `HOLE_FILL_TIME_MS` milisegundos (`HOLE_FILL_TIME` en segundos para el loop) y luego restauran `TILE_BRICK`.
+- Si los pies/centro de un enemy pasan sobre un hoyo, cae y queda atrapado aunque debajo del hoyo haya aire; no esperar a que todo el sprite entre en el tile del pozo.
+- La entrada del enemy al pozo debe verse como caída: `in_hole=True` puede empezar antes de quedar asentado, pero no debe teletransportar `x/y`; usar `hole_settled` para iniciar el timer de escape solo al llegar al tile del pozo.
+- Si un enemy sale horizontalmente de una escalera hacia aire sin soporte, debe dejar de sostenerse por la escalera y caer por gravedad.
+- Un enemy atrapado puede escapar antes del cierre despues de `ENEMY_HOLE_ESCAPE_TIME_MS`; intenta salir a un tile lateral valido sobre piso.
+- Un enemy que esta cayendo dentro de un pozo todavia mata al player por máscara pixel-perfect si lo toca; solo deja de matar cuando ya esta asentado (`hole_settled=True`) y atrapado.
+- Un enemigo dentro de un hoyo que se cierra suma score y reaparece aleatoriamente sobre un piso valido.
 - El player dentro de un hoyo que se cierra entra en estado de muerte.
+- Si debajo del hoyo hay aire, el player atraviesa el hoyo y sigue cayendo; solo muere si sigue dentro cuando el hoyo se cierra.
+- El player cae al pozo por overlap horizontal de pies/cuerpo (`PLAYER_HOLE_FALL_OVERLAP`), no solo por centro; al caer se centra en la boca del pozo para que las esquinas no colisionen con ladrillos vecinos y lo sostengan.
 - Contacto con enemigo fuera de hoyo causa muerte.
 - Al recolectar todo el oro, se completa el nivel y se avanza al siguiente.
 - Cuando se termina la lista de niveles, vuelve al nivel 0.
@@ -131,7 +142,8 @@ Timers locales:
 
 - `DYING_FLASH_TIME`
 - `LEVEL_COMPLETE_DELAY`
-- `HOLE_FILL_TIME`
+- `HOLE_FILL_TIME_MS` / `HOLE_FILL_TIME`
+- `ENEMY_HOLE_ESCAPE_TIME_MS` / `ENEMY_HOLE_ESCAPE_TIME`
 
 ## Convenciones de cambios
 
@@ -142,7 +154,9 @@ Timers locales:
 - Preferir cambios chicos y directos antes que refactors grandes.
 - El arte actual es placeholder; no asumir que los sprites finales tendran mas de 32x32 salvo que se cambie la logica.
 - Player y enemies comparten por ahora los mismos frames `lode_*`; el espejado izquierda/derecha se hace en memoria con `pygame.transform.flip`.
+- Para colisiones player-enemy, mantener máscaras pixel-perfect. No solucionar enemigos freezados agrandando hitboxes; solucionar el bloqueo en `enemy.py`.
 - Si se modifica fisica/colisiones, revisar tanto `player.py` como `enemy.py`, porque tienen logica similar.
+- Si se corre `py_compile` en sandbox, usar `PYTHONPYCACHEPREFIX=/tmp/loderunner-pycache` para evitar writes a `~/Library/Caches`.
 - Si se agrega CLI o configuracion de arranque, hacerlo desde `main.py` y pasar opciones a `Game` sin mezclar parseo de argumentos dentro del loop.
 
 ## Pendientes conocidos

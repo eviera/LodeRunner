@@ -3,6 +3,7 @@
 import pygame
 import json
 import os
+import random
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(_BASE_DIR)
@@ -296,7 +297,7 @@ class Game:
         joy_x = self.input.joy_axis_x
         joy_y = self.input.joy_axis_y
 
-        self.player.update(dt, keys, joy_x, joy_y, self.level_map)
+        self.player.update(dt, keys, joy_x, joy_y, self.level_map, self.holes)
 
         # Digging: Z=izquierda, X=derecha
         if keys[pygame.K_z]:
@@ -356,7 +357,8 @@ class Game:
         for enemy in self.enemies:
             enemy_img = enemy.get_current_image()
             enemy_pos = (int(enemy.x), int(enemy.y))
-            if not enemy.in_hole and self._mask_overlap(player_img, player_pos, enemy_img, enemy_pos):
+            enemy_is_trapped = enemy.in_hole and enemy.hole_settled
+            if not enemy_is_trapped and self._mask_overlap(player_img, player_pos, enemy_img, enemy_pos):
                 self.state = STATE_DYING
                 self.dying_timer = DYING_FLASH_TIME
                 return
@@ -373,11 +375,11 @@ class Game:
 
                     hole_rect = pygame.Rect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE)
 
-                    # Kill enemy inside hole
+                    # Kill and respawn enemy inside hole
                     for enemy in self.enemies:
-                        if enemy.active and enemy.get_rect().colliderect(hole_rect):
-                            enemy.active = False
+                        if self._enemy_is_in_hole(enemy, r, c, hole_rect):
                             self.score += SCORE_ENEMY_KILL
+                            self._respawn_enemy(enemy)
 
                     # Kill player if inside hole
                     if self.player.get_rect().colliderect(hole_rect):
@@ -389,7 +391,59 @@ class Game:
         for hole in to_remove:
             self.holes.remove(hole)
 
-        self.enemies = [e for e in self.enemies if e.active]
+    def _enemy_is_in_hole(self, enemy, row, col, hole_rect):
+        return (
+            enemy.active and
+            (
+                (enemy.in_hole and enemy.current_hole == (row, col)) or
+                enemy.get_rect().colliderect(hole_rect)
+            )
+        )
+
+    def _respawn_enemy(self, enemy):
+        spawn = self._random_enemy_spawn()
+        enemy.x = float(spawn[1] * TILE_SIZE)
+        enemy.y = float(spawn[0] * TILE_SIZE)
+        enemy.vel_x = 0.0
+        enemy.vel_y = 0.0
+        enemy.in_hole = False
+        enemy.current_hole = None
+        enemy.hole_settled = False
+        enemy.hole_escape_timer = 0.0
+        enemy.path = []
+        enemy.path_target = None
+        enemy.repath_timer = 0.0
+        enemy.stuck_timer = 0.0
+        enemy.idle_timer = 0.0
+        enemy.unstuck_timer = 0.0
+        enemy.walk_distance = 0.0
+        enemy.walk_frame = 0
+
+    def _random_enemy_spawn(self):
+        candidates = []
+        open_holes = {(hole["row"], hole["col"]) for hole in self.holes}
+        player_rect = self.player.get_rect()
+        level_h = len(self.level_map)
+
+        for row in range(max(0, level_h - 1)):
+            for col in range(len(self.level_map[row])):
+                if (row, col) in open_holes:
+                    continue
+                if self.level_map[row][col] in SOLID_TILES:
+                    continue
+                if row + 1 >= level_h or col >= len(self.level_map[row + 1]):
+                    continue
+                if self.level_map[row + 1][col] not in SOLID_TILES:
+                    continue
+
+                rect = pygame.Rect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                if rect.colliderect(player_rect.inflate(TILE_SIZE * 2, TILE_SIZE * 2)):
+                    continue
+                candidates.append((row, col))
+
+        if not candidates:
+            return (1, 1)
+        return random.choice(candidates)
 
     def _update_dying(self, dt):
         self.dying_timer -= dt

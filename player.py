@@ -35,12 +35,14 @@ class Player(PhysicsEntity):
         self.x = float(TILE_SIZE)
         self.y = float(TILE_SIZE)
 
-    def _detect_states(self, level_map):
+    def _detect_states(self, level_map, holes=None):
         level_h = len(level_map)
+        holes = holes or []
 
         # on_ground: solid tile immediately below player
         foot_y = self.y + self.height + 1
         foot_row = int(foot_y / TILE_SIZE)
+        center_col = int((self.x + self.width // 2) / TILE_SIZE)
         col_left = int((self.x + 2) / TILE_SIZE)
         col_right = int((self.x + self.width - 3) / TILE_SIZE)
         self.on_ground = False
@@ -50,7 +52,19 @@ class Player(PhysicsEntity):
                (0 <= col_right < row_w and level_map[foot_row][col_right] in SOLID_TILES):
                 self.on_ground = True
 
-        mid_col = int((self.x + self.width // 2) / TILE_SIZE)
+        player_left = self.x + 2
+        player_right = self.x + self.width - 3
+        for hole in holes:
+            if hole["row"] != foot_row:
+                continue
+            hole_left = hole["col"] * TILE_SIZE
+            hole_right = hole_left + TILE_SIZE
+            overlap = min(player_right, hole_right) - max(player_left, hole_left)
+            if overlap >= PLAYER_HOLE_FALL_OVERLAP or hole["col"] == center_col:
+                self.on_ground = False
+                break
+
+        mid_col = center_col
 
         # on_ladder: ladder tile overlaps player's center column
         self.on_ladder = False
@@ -67,8 +81,8 @@ class Player(PhysicsEntity):
             if level_map[mid_row][mid_col] == TILE_HANDRAIL:
                 self.on_handrail = True
 
-    def update(self, dt, keys, joy_x, joy_y, level_map):
-        self._detect_states(level_map)
+    def update(self, dt, keys, joy_x, joy_y, level_map, holes=None):
+        self._detect_states(level_map, holes)
 
         if self.dig_cooldown > 0:
             self.dig_cooldown -= dt
@@ -114,6 +128,8 @@ class Player(PhysicsEntity):
         new_x = self.x + self.vel_x * dt
         new_y = self.y + self.vel_y * dt
 
+        crossed_hole = self._crossed_hole(self.x, new_x, holes)
+
         # Horizontal collision
         if not self._check_collision(new_x, self.y, level_map):
             self.x = new_x
@@ -127,6 +143,13 @@ class Player(PhysicsEntity):
                     valid = mid
             self.x = valid
             self.vel_x = 0.0
+
+        if crossed_hole and not self.on_ladder and not self.on_handrail:
+            self.x = float(crossed_hole["col"] * TILE_SIZE)
+            self.on_ground = False
+            if self.vel_y <= 0:
+                self.vel_y = GRAVITY * dt
+            new_y = self.y + self.vel_y * dt
 
         # Vertical collision
         if not self._check_collision(self.x, new_y, level_map):
@@ -165,10 +188,36 @@ class Player(PhysicsEntity):
         dig_col = player_col + direction
         level_h = len(level_map)
         if 0 <= foot_row < level_h and 0 <= dig_col < len(level_map[foot_row]):
-            if level_map[foot_row][dig_col] == TILE_BRICK:
+            has_ladder_above = (
+                foot_row > 0 and
+                dig_col < len(level_map[foot_row - 1]) and
+                level_map[foot_row - 1][dig_col] == TILE_LADDER
+            )
+            if level_map[foot_row][dig_col] == TILE_BRICK and not has_ladder_above:
                 self.dig_cooldown = DIG_COOLDOWN
                 return True, foot_row, dig_col
         return False, -1, -1
+
+    def _crossed_hole(self, old_x, new_x, holes):
+        if not holes:
+            return False
+        foot_row = int((self.y + self.height + 1) / TILE_SIZE)
+        old_left = old_x + 2
+        old_right = old_x + self.width - 3
+        new_left = new_x + 2
+        new_right = new_x + self.width - 3
+        left = min(old_left, new_left)
+        right = max(old_right, new_right)
+
+        for hole in holes:
+            if hole["row"] != foot_row:
+                continue
+            hole_left = hole["col"] * TILE_SIZE
+            hole_right = hole_left + TILE_SIZE
+            overlap = min(right, hole_right) - max(left, hole_left)
+            if overlap >= PLAYER_HOLE_FALL_OVERLAP:
+                return hole
+        return None
 
     def _check_collision(self, x, y, level_map):
         level_h = len(level_map)
