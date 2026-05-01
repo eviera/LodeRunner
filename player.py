@@ -1,5 +1,7 @@
 # Lode Runner - Player
 
+from math import ceil, floor
+
 import pygame
 from constants import *
 from evgamelib.entity import PhysicsEntity
@@ -17,13 +19,18 @@ class Player(PhysicsEntity):
         self.fall_image = None
         self.fall_image_flip = None
         self.dig_cooldown = 0.0
+        self._stationary_hole_ignores = set()
         # Walk animation
         self.walk_distance = 0.0
         self.walk_frame = 0
         self.walk_frames = []
         self.walk_frames_flip = []
 
+    def reset_hole_ignores(self):
+        self._stationary_hole_ignores.clear()
+
     def init_from_map(self, level_map):
+        self.reset_hole_ignores()
         for row_i, row in enumerate(level_map):
             for col_i, tile in enumerate(row):
                 if tile == TILE_PLAYER:
@@ -52,15 +59,17 @@ class Player(PhysicsEntity):
                (0 <= col_right < row_w and level_map[foot_row][col_right] in SOLID_TILES):
                 self.on_ground = True
 
-        player_left = self.x + 2
-        player_right = self.x + self.width - 3
         for hole in holes:
             if hole["row"] != foot_row:
                 continue
-            hole_left = hole["col"] * TILE_SIZE
-            hole_right = hole_left + TILE_SIZE
-            overlap = min(player_right, hole_right) - max(player_left, hole_left)
-            if overlap >= PLAYER_HOLE_FALL_OVERLAP or hole["col"] == center_col:
+            hole_key = (hole["row"], hole["col"])
+            if hole_key in self._stationary_hole_ignores and hole["col"] != center_col:
+                continue
+            foot_overlap = self._hole_visible_foot_overlap(hole)
+            if hole.get("solid_for_player") and foot_overlap >= PLAYER_HOLE_FALL_OVERLAP:
+                self.on_ground = True
+                continue
+            if foot_overlap >= PLAYER_HOLE_FALL_OVERLAP:
                 self.on_ground = False
                 break
 
@@ -82,11 +91,6 @@ class Player(PhysicsEntity):
                 self.on_handrail = True
 
     def update(self, dt, keys, joy_x, joy_y, level_map, holes=None):
-        self._detect_states(level_map, holes)
-
-        if self.dig_cooldown > 0:
-            self.dig_cooldown -= dt
-
         # Input
         move_x = 0.0
         move_y = 0.0
@@ -109,6 +113,14 @@ class Player(PhysicsEntity):
 
         if abs(joy_y) > DEAD_ZONE:
             move_y = 1.0 if joy_y > 0 else -1.0
+
+        if abs(move_x) > 0.0:
+            self._stationary_hole_ignores.clear()
+
+        self._detect_states(level_map, holes)
+
+        if self.dig_cooldown > 0:
+            self.dig_cooldown -= dt
 
         # Physics based on state
         if self.on_ladder:
@@ -195,29 +207,53 @@ class Player(PhysicsEntity):
             )
             if level_map[foot_row][dig_col] == TILE_BRICK and not has_ladder_above:
                 self.dig_cooldown = DIG_COOLDOWN
+                self._stationary_hole_ignores.add((foot_row, dig_col))
                 return True, foot_row, dig_col
         return False, -1, -1
 
     def _crossed_hole(self, old_x, new_x, holes):
         if not holes:
             return False
+        if abs(new_x - old_x) < 0.001:
+            return None
         foot_row = int((self.y + self.height + 1) / TILE_SIZE)
-        old_left = old_x + 2
-        old_right = old_x + self.width - 3
-        new_left = new_x + 2
-        new_right = new_x + self.width - 3
-        left = min(old_left, new_left)
-        right = max(old_right, new_right)
-
+        center_col = int((self.x + self.width // 2) / TILE_SIZE)
         for hole in holes:
             if hole["row"] != foot_row:
                 continue
-            hole_left = hole["col"] * TILE_SIZE
-            hole_right = hole_left + TILE_SIZE
-            overlap = min(right, hole_right) - max(left, hole_left)
-            if overlap >= PLAYER_HOLE_FALL_OVERLAP:
+            hole_key = (hole["row"], hole["col"])
+            if hole_key in self._stationary_hole_ignores and hole["col"] != center_col:
+                continue
+            if hole.get("solid_for_player"):
+                continue
+            if self._hole_visible_foot_overlap(hole, new_x) >= PLAYER_HOLE_FALL_OVERLAP:
                 return hole
         return None
+
+    def _hole_visible_foot_overlap(self, hole, x=None):
+        image = self.get_current_image()
+        if image is None:
+            image = self.image
+        if image is None:
+            return 0
+
+        x = self.x if x is None else x
+        mask = pygame.mask.from_surface(image)
+        hole_left = hole["col"] * TILE_SIZE
+        hole_right = hole_left + TILE_SIZE
+        local_left = max(0, floor(hole_left - x))
+        local_right = min(image.get_width(), ceil(hole_right - x))
+        if local_left >= local_right:
+            return 0
+
+        band_top = max(0, image.get_height() - PLAYER_HOLE_FOOT_BAND_HEIGHT)
+        visible_columns = 0
+        for px in range(local_left, local_right):
+            for py in range(band_top, image.get_height()):
+                if mask.get_at((px, py)):
+                    visible_columns += 1
+                    break
+        return visible_columns
 
     def _check_collision(self, x, y, level_map):
         level_h = len(level_map)

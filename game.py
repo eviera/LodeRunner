@@ -18,17 +18,19 @@ from evgamelib.text import draw_text_with_outline
 
 
 class Game:
-    def __init__(self):
+    def __init__(self, initial_level=0, test_mode=False):
         self.pipeline = None
         self.input = InputManager(DEAD_ZONE)
         self.sound = SoundManager()
         self.font_hud = None
         self.font_msg = None
+        self.test_mode = test_mode
 
         self.state = STATE_PLAYING
         self.score = 0
         self.lives = INITIAL_LIVES
-        self.current_level = 0
+        self.current_level = initial_level
+        self.initial_level = initial_level
 
         self.levels = []
         self.level_map = []   # List[List[str]] mutable
@@ -77,7 +79,7 @@ class Game:
 
         self._load_assets()
         self._load_levels()
-        self._start_level(0)
+        self._start_level(self.initial_level)
 
     def _load_image(self, path):
         """Carga una imagen PNG. Retorna None si no existe."""
@@ -230,6 +232,7 @@ class Game:
                     self.player.y = float(row_i * TILE_SIZE)
                     self.player.vel_x = 0.0
                     self.player.vel_y = 0.0
+                    self.player.reset_hole_ignores()
                     self.level_map[row_i][col_i] = TILE_AIR
                 elif tile == TILE_ENEMY:
                     e = Enemy(col_i * TILE_SIZE, row_i * TILE_SIZE)
@@ -297,7 +300,10 @@ class Game:
         joy_x = self.input.joy_axis_x
         joy_y = self.input.joy_axis_y
 
-        self.player.update(dt, keys, joy_x, joy_y, self.level_map, self.holes)
+        player_holes = self._holes_for_player()
+        self.player.update(dt, keys, joy_x, joy_y, self.level_map, player_holes)
+        if self.test_mode and keys[pygame.K_UP]:
+            self._test_escape_player_from_hole()
 
         # Digging: Z=izquierda, X=derecha
         if keys[pygame.K_z]:
@@ -322,6 +328,60 @@ class Game:
             self.state = STATE_LEVEL_COMPLETE
             self.level_complete_timer = LEVEL_COMPLETE_DELAY
             self.score += SCORE_LEVEL_COMPLETE
+
+    def _holes_for_player(self):
+        solid_holes = {
+            enemy.current_hole
+            for enemy in self.enemies
+            if enemy.active and enemy.in_hole and enemy.hole_settled and enemy.current_hole is not None
+        }
+        if not solid_holes:
+            return self.holes
+        return [
+            {**hole, "solid_for_player": (hole["row"], hole["col"]) in solid_holes}
+            for hole in self.holes
+        ]
+
+    def _test_escape_player_from_hole(self):
+        hole = self._player_current_hole()
+        if hole is None:
+            return False
+
+        row = hole["row"]
+        col = hole["col"]
+        directions = [1, -1] if self.player.facing_right else [-1, 1]
+        for direction in directions:
+            target_row = row - 1
+            target_col = col + direction
+            if self._can_place_player_at(target_row, target_col):
+                self.player.x = float(target_col * TILE_SIZE)
+                self.player.y = float(target_row * TILE_SIZE)
+                self.player.vel_x = 0.0
+                self.player.vel_y = 0.0
+                self.player.reset_hole_ignores()
+                return True
+        return False
+
+    def _player_current_hole(self):
+        player_center_row = int((self.player.y + self.player.height // 2) / TILE_SIZE)
+        player_center_col = int((self.player.x + self.player.width // 2) / TILE_SIZE)
+        for hole in self.holes:
+            if hole["row"] == player_center_row and hole["col"] == player_center_col:
+                return hole
+        return None
+
+    def _can_place_player_at(self, row, col):
+        if row < 0 or row >= len(self.level_map):
+            return False
+        if col < 0 or col >= len(self.level_map[row]):
+            return False
+        if self.level_map[row][col] in SOLID_TILES:
+            return False
+        if row + 1 >= len(self.level_map) or col >= len(self.level_map[row + 1]):
+            return False
+        if self.level_map[row + 1][col] not in SOLID_TILES:
+            return False
+        return not self.player._check_collision(col * TILE_SIZE, row * TILE_SIZE, self.level_map)
 
     def _collect_gold(self):
         player_img = self.player.get_current_image()
@@ -381,8 +441,8 @@ class Game:
                             self.score += SCORE_ENEMY_KILL
                             self._respawn_enemy(enemy)
 
-                    # Kill player if inside hole
-                    if self.player.get_rect().colliderect(hole_rect):
+                    # Kill player if visible pixels are inside the closing hole.
+                    if self._player_overlaps_hole_pixels(hole_rect):
                         self.state = STATE_DYING
                         self.dying_timer = DYING_FLASH_TIME
 
@@ -399,6 +459,20 @@ class Game:
                 enemy.get_rect().colliderect(hole_rect)
             )
         )
+
+    def _player_overlaps_hole_pixels(self, hole_rect):
+        player_img = self.player.get_current_image()
+        if player_img is None:
+            return False
+
+        player_rect = player_img.get_rect(topleft=(int(self.player.x), int(self.player.y)))
+        if not player_rect.colliderect(hole_rect):
+            return False
+
+        player_mask = pygame.mask.from_surface(player_img)
+        hole_mask = pygame.mask.Mask((hole_rect.width, hole_rect.height), fill=True)
+        offset = (hole_rect.x - player_rect.x, hole_rect.y - player_rect.y)
+        return player_mask.overlap(hole_mask, offset) is not None
 
     def _respawn_enemy(self, enemy):
         spawn = self._random_enemy_spawn()
@@ -469,6 +543,8 @@ class Game:
         gs.fill(COLOR_BG)
         self._render_level(gs)
         self._render_entities(gs)
+        if self.test_mode:
+            self._render_test_grid(gs)
         self.pipeline.scale_game_to_screen()
         self._render_hud()
         self._render_overlays()
@@ -523,6 +599,14 @@ class Game:
 
         for enemy in self.enemies:
             enemy.draw(surf)
+
+    def _render_test_grid(self, surf):
+        grid = pygame.Surface((GAME_WIDTH, GAME_VIEWPORT_HEIGHT), pygame.SRCALPHA)
+        for x in range(0, GAME_WIDTH + 1, TILE_SIZE):
+            pygame.draw.line(grid, COLOR_TEST_GRID, (x, 0), (x, GAME_VIEWPORT_HEIGHT))
+        for y in range(0, GAME_VIEWPORT_HEIGHT + 1, TILE_SIZE):
+            pygame.draw.line(grid, COLOR_TEST_GRID, (0, y), (GAME_WIDTH, y))
+        surf.blit(grid, (0, 0))
 
     def _render_hud(self):
         screen = self.pipeline.screen

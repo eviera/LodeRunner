@@ -38,10 +38,10 @@
       "#       H            H         #",
       "#   G   H   G      G H     G   #",
       "#BBBBBBBHBBBBBBBBBBBBHBBBBBBBBB#",
-      "#       H            H         #",
-      "#P   E  H      E     H  E      #",
-      "################################",
-      "                                ",
+      "#       H            HBBBBBBBBB#",
+      "#P      H            HBBBBBBBBB#",
+      "#BBBBBBBBBBBBBBBBBBBBBBBBBBBBB##",
+      " B############################# ",
       "                                "
     ]
   },

@@ -30,6 +30,15 @@ Tambien existen wrappers:
 ./editor.sh
 ```
 
+Argumentos utiles:
+
+```bash
+./lode.sh --level=2
+./lode.sh --level=2 --test
+```
+
+`--test` es un modo temporal de debug: si el player esta dentro de un pozo abierto, flecha arriba lo saca hacia el lado libre.
+
 `editor.py` todavia es placeholder.
 
 ## Estructura
@@ -124,7 +133,7 @@ Si hace falta entender patrones de editor, fullscreen o pipeline, revisar primer
 - Un enemigo dentro de un hoyo que se cierra suma score y reaparece aleatoriamente sobre un piso valido.
 - El player dentro de un hoyo que se cierra entra en estado de muerte.
 - Si debajo del hoyo hay aire, el player atraviesa el hoyo y sigue cayendo; solo muere si sigue dentro cuando el hoyo se cierra.
-- El player cae al pozo por overlap horizontal de pies/cuerpo (`PLAYER_HOLE_FALL_OVERLAP`), no solo por centro; al caer se centra en la boca del pozo para que las esquinas no colisionen con ladrillos vecinos y lo sostengan.
+- El player cae al pozo solo por mascara pixel-perfect de los pixeles visibles del Lode en la zona de pies (`PLAYER_HOLE_FALL_OVERLAP` sobre `PLAYER_HOLE_FOOT_BAND_HEIGHT`); no usar overlap del rectangulo/tile completo ni columna central para decidir caida.
 - Contacto con enemigo fuera de hoyo causa muerte.
 - Al recolectar todo el oro, se completa el nivel y se avanza al siguiente.
 - Cuando se termina la lista de niveles, vuelve al nivel 0.
@@ -154,7 +163,7 @@ Timers locales:
 - Preferir cambios chicos y directos antes que refactors grandes.
 - El arte actual es placeholder; no asumir que los sprites finales tendran mas de 32x32 salvo que se cambie la logica.
 - Player y enemies comparten por ahora los mismos frames `lode_*`; el espejado izquierda/derecha se hace en memoria con `pygame.transform.flip`.
-- Para colisiones player-enemy, mantener máscaras pixel-perfect. No solucionar enemigos freezados agrandando hitboxes; solucionar el bloqueo en `enemy.py`.
+- Todas las colisiones sensibles con sprites visibles deben ser pixel-perfect. Para player-enemy y player-hoyos, mantener mascaras/pixeles visibles; no agrandar hitboxes ni usar el rectangulo completo del tile como sustituto.
 - Si se modifica fisica/colisiones, revisar tanto `player.py` como `enemy.py`, porque tienen logica similar.
 - Si se corre `py_compile` en sandbox, usar `PYTHONPYCACHEPREFIX=/tmp/loderunner-pycache` para evitar writes a `~/Library/Caches`.
 - Si se agrega CLI o configuracion de arranque, hacerlo desde `main.py` y pasar opciones a `Game` sin mezclar parseo de argumentos dentro del loop.

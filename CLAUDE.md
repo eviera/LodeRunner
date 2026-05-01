@@ -16,6 +16,15 @@ python make_assets.py   # generar sprites placeholder (primera vez)
 python main.py
 ```
 
+Argumentos utiles:
+
+```bash
+python main.py --level=2
+python main.py --level=2 --test
+```
+
+`--test` es un modo temporal de debug: si el player esta dentro de un pozo abierto, flecha arriba lo saca hacia el lado libre.
+
 ## Estructura de archivos
 
 | Archivo | Descripción |
@@ -79,7 +88,7 @@ python main.py
 - Enemy en hoyo cuando se llena → suma score y reaparece aleatoriamente sobre un piso valido
 - Player en hoyo cuando se llena → pierde vida
 - Player atraviesa el hoyo si debajo hay aire; solo muere si sigue dentro cuando el hoyo se cierra
-- Player cae al pozo por overlap horizontal (`PLAYER_HOLE_FALL_OVERLAP`), no solo por centro; al caer se centra en la boca para evitar que las esquinas lo sostengan sobre ladrillos vecinos
+- Player cae al pozo solo por mascara pixel-perfect de los pixeles visibles del Lode en la zona de pies (`PLAYER_HOLE_FALL_OVERLAP` sobre `PLAYER_HOLE_FOOT_BAND_HEIGHT`); no usar overlap del rectangulo/tile completo ni columna central para decidir caida
 
 **Enemigos:**
 - Persiguen al player con pathfinding sobre la grilla del nivel
@@ -94,6 +103,7 @@ python main.py
 **Colisiones:**
 - Player y enemies miden 1 tile, pero los sprites `lode_*` tienen alpha transparente amplio dentro de 32x32
 - La muerte por enemy usa máscaras pixel-perfect de los sprites visibles
+- Todas las colisiones sensibles con sprites visibles deben ser pixel-perfect; player-enemy y player-hoyos usan pixeles visibles/mascaras, no rectangulos completos del tile
 - Si un enemy queda cerca sin matar al player, revisar primero la IA/quietud del enemy en `enemy.py`; no agrandar hitboxes para resolver ese caso
 
 **Condición de victoria:**

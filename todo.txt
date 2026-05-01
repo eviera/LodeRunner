@@ -1,8 +1,13 @@
 /- Prompt inicial
 - Poder arrancar en cualquier nivel con --level=N
+- enemigos roban oro
+- enemigos cuando mueren, caen del cielo
+- nivel sin techo, cuando se gana, se arma escalera hacia el cielo y ahi se sale
+- eliminar parametro test
 
 
-
+este esta muy bueno
+	https://www.youtube.com/watch?v=cqJkSa9SExk
 
 
 
