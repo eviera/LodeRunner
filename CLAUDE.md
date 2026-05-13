@@ -85,6 +85,7 @@ python main.py --level=2 --test
 - La entrada al pozo se anima con gravedad; `hole_settled` indica cuando ya llegó al tile del pozo y recién ahí corre el timer de escape
 - Enemy atrapado puede escapar antes del cierre despues de `ENEMY_HOLE_ESCAPE_TIME_MS`; sale a un tile lateral valido sobre piso si existe
 - Enemy cayendo dentro de un pozo todavía mata al player si lo toca por máscara pixel-perfect; solo deja de matar cuando `hole_settled=True`
+- Pozo con enemy ya asentado (`hole_settled=True`) sirve de soporte para el player: Lode puede pasar por arriba sin caer para escapar
 - Enemy en hoyo cuando se llena → suma score y reaparece aleatoriamente sobre un piso valido
 - Player en hoyo cuando se llena → pierde vida
 - Player atraviesa el hoyo si debajo hay aire; solo muere si sigue dentro cuando el hoyo se cierra

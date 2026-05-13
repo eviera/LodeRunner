@@ -130,6 +130,7 @@ Si hace falta entender patrones de editor, fullscreen o pipeline, revisar primer
 - Si un enemy sale horizontalmente de una escalera hacia aire sin soporte, debe dejar de sostenerse por la escalera y caer por gravedad.
 - Un enemy atrapado puede escapar antes del cierre despues de `ENEMY_HOLE_ESCAPE_TIME_MS`; intenta salir a un tile lateral valido sobre piso.
 - Un enemy que esta cayendo dentro de un pozo todavia mata al player por máscara pixel-perfect si lo toca; solo deja de matar cuando ya esta asentado (`hole_settled=True`) y atrapado.
+- Un pozo con enemy ya asentado (`hole_settled=True`) funciona como soporte para el player: Lode puede pasar por arriba sin caer, lo que permite escapar.
 - Un enemigo dentro de un hoyo que se cierra suma score y reaparece aleatoriamente sobre un piso valido.
 - El player dentro de un hoyo que se cierra entra en estado de muerte.
 - Si debajo del hoyo hay aire, el player atraviesa el hoyo y sigue cayendo; solo muere si sigue dentro cuando el hoyo se cierra.
