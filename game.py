@@ -17,8 +17,20 @@ from evgamelib.sound_manager import SoundManager
 from evgamelib.text import draw_text_with_outline
 
 
+class _VirtualKeys:
+    def __init__(self, keys, virtual_key_timers):
+        self.keys = keys
+        self.virtual_key_timers = virtual_key_timers
+
+    def __getitem__(self, key):
+        return self.keys[key] or self.virtual_key_timers.get(key, 0.0) > 0.0
+
+
 class Game:
-    def __init__(self, initial_level=0, test_mode=False):
+    def __init__(self, initial_level=0, test_mode=False, fullscreen=False, computer_control=False):
+        self.fullscreen = fullscreen
+        self.computer_control = computer_control
+        self.virtual_key_timers = {}
         self.pipeline = None
         self.input = InputManager(DEAD_ZONE)
         self.sound = SoundManager()
@@ -66,7 +78,7 @@ class Game:
             RENDER_SCALE, HUD_HEIGHT,
             SCREEN_WIDTH, SCREEN_HEIGHT,
         )
-        self.pipeline.init_display(fullscreen=True)
+        self.pipeline.init_display(fullscreen=self.fullscreen)
         pygame.display.set_caption("Lode Runner")
 
         font_path = os.path.join(_BASE_DIR, FONT_FILE)
@@ -276,12 +288,62 @@ class Game:
                             self.score = 0
                             self.lives = INITIAL_LIVES
                             self._start_level(0)
+                elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION):
+                    self._handle_computer_control(event)
 
             self.input.poll()
+            self._update_virtual_keys(dt)
             self._update(dt)
             self._render()
 
         pygame.quit()
+
+    def _handle_computer_control(self, event):
+        if not self.computer_control:
+            return
+        if not hasattr(event, "pos"):
+            return
+        if event.type == pygame.MOUSEMOTION and not any(event.buttons):
+            return
+
+        x, y = event.pos
+        pulse = 1.0 if event.type == pygame.MOUSEBUTTONDOWN else 0.25
+        keys = self._computer_control_keys_for_pos(x, y)
+        for key in keys:
+            self.virtual_key_timers[key] = max(self.virtual_key_timers.get(key, 0.0), pulse)
+
+    def _computer_control_keys_for_pos(self, x, y):
+        if y >= VIEWPORT_PIXEL_HEIGHT:
+            segment = max(0, min(5, int((x / max(1, SCREEN_WIDTH)) * 6)))
+            return (
+                [pygame.K_z],
+                [pygame.K_LEFT],
+                [pygame.K_UP],
+                [pygame.K_DOWN],
+                [pygame.K_RIGHT],
+                [pygame.K_x],
+            )[segment]
+
+        if y < VIEWPORT_PIXEL_HEIGHT * 0.25:
+            return [pygame.K_UP]
+        if y > VIEWPORT_PIXEL_HEIGHT * 0.80:
+            return [pygame.K_DOWN]
+        if x < SCREEN_WIDTH * 0.50:
+            return [pygame.K_LEFT]
+        return [pygame.K_RIGHT]
+
+    def _update_virtual_keys(self, dt):
+        if not self.virtual_key_timers:
+            return
+        expired = []
+        for key, timer in self.virtual_key_timers.items():
+            timer -= dt
+            if timer <= 0:
+                expired.append(key)
+            else:
+                self.virtual_key_timers[key] = timer
+        for key in expired:
+            del self.virtual_key_timers[key]
 
     # ------------------------------------------------------------------
     # Update
@@ -296,7 +358,7 @@ class Game:
             self._update_level_complete(dt)
 
     def _update_playing(self, dt):
-        keys = self.input.keys
+        keys = _VirtualKeys(self.input.keys, self.virtual_key_timers)
         joy_x = self.input.joy_axis_x
         joy_y = self.input.joy_axis_y
 

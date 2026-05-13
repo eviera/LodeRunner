@@ -2,7 +2,14 @@
 
 import argparse
 
-from game import Game
+
+def _parse_bool(value):
+    value = value.lower()
+    if value in ("1", "yes", "true", "on"):
+        return True
+    if value in ("0", "no", "false", "off"):
+        return False
+    raise argparse.ArgumentTypeError("usar yes/no, true/false, 1/0 u on/off")
 
 
 def _positive_int(value):
@@ -28,11 +35,32 @@ def parse_args():
         action="store_true",
         help="enable temporary debug/test helpers",
     )
+    parser.add_argument(
+        "--fullscreen",
+        type=_parse_bool,
+        default=False,
+        metavar="yes|no",
+        help="start in fullscreen mode (default: no)",
+    )
+    parser.add_argument(
+        "--computer-control",
+        type=_parse_bool,
+        default=False,
+        metavar="yes|no",
+        help="enable mouse/click controls for Computer Use testing",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    game = Game(initial_level=args.level - 1, test_mode=args.test)
+    from game import Game
+
+    game = Game(
+        initial_level=args.level - 1,
+        test_mode=args.test,
+        fullscreen=args.fullscreen,
+        computer_control=args.computer_control,
+    )
     game.init()
     game.run()
